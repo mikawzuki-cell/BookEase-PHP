@@ -1,0 +1,245 @@
+/**
+ * BookEase - Main Application Logic
+ */
+
+const App = {
+    currentUser: null,
+    currentModule: 'dashboard',
+    
+    async init() {
+        console.log('Initializing BookEase Application...');
+        
+        // Check authentication
+        const session = await API.checkSession();
+        if (!session.success) {
+            window.location.href = '/index.html';
+            return;
+        }
+        
+        this.currentUser = session.data;
+        this.setupUI();
+        this.loadDashboard();
+    },
+    
+    setupUI() {
+        // Update user display
+        const initials = this.currentUser.full_name
+            .split(' ')
+            .map(n => n[0])
+            .join('')
+            .slice(0, 2)
+            .toUpperCase();
+        
+        document.getElementById('userInitials').textContent = initials;
+        document.getElementById('userName').textContent = this.currentUser.full_name;
+        document.getElementById('userRole').textContent = this.currentUser.role;
+        document.getElementById('userDisplay').textContent = this.currentUser.full_name;
+        document.getElementById('userAvatarSmall').textContent = initials;
+        document.getElementById('welcomeName').textContent = this.currentUser.full_name.split(' ')[0];
+        
+        // Update date
+        const now = new Date();
+        const greeting = now.getHours() < 12 ? 'Good morning' : now.getHours() < 17 ? 'Good afternoon' : 'Good evening';
+        document.getElementById('greeting').textContent = `${greeting},`;
+        document.getElementById('dateDisplay').textContent = now.toLocaleDateString('en-US', {
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+        });
+        
+        // Show admin section if admin
+        if (this.currentUser.role === 'admin') {
+            document.getElementById('admin-section').style.display = 'block';
+        }
+        
+        // Setup navigation
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const module = link.dataset.module;
+                this.loadModule(module);
+            });
+        });
+        
+        // Logout button
+        document.getElementById('logoutBtn').addEventListener('click', () => {
+            if (confirm('Are you sure you want to logout?')) {
+                API.logout();
+            }
+        });
+        
+        // Mobile menu
+        document.getElementById('menuBtn').addEventListener('click', () => {
+            const sidebar = document.querySelector('.sidebar');
+            sidebar.style.transform = sidebar.style.transform === 'translateX(0px)' 
+                ? 'translateX(-100%)' 
+                : 'translateX(0)';
+        });
+    },
+    
+    async loadModule(module) {
+        // Check permission
+        if (!this.hasPermission(module)) {
+            alert('You do not have permission to access this module.');
+            return;
+        }
+        
+        this.currentModule = module;
+        
+        // Update active nav link
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.classList.toggle('active', link.dataset.module === module);
+        });
+        
+        // Hide all pages
+        document.querySelectorAll('.page-content').forEach(page => {
+            page.style.display = 'none';
+        });
+        
+        // Show specific page
+        const page = document.getElementById(`${module}-page`);
+        if (page) {
+            page.style.display = 'block';
+        }
+        
+        // Update page title
+        const titles = {
+            'dashboard': 'Dashboard',
+            'appointments': 'Appointments',
+            'clients': 'Clients',
+            'services': 'Services',
+            'staff': 'Staff',
+            'reports': 'Reports',
+            'users': 'User Management',
+            'audit': 'Audit Trail'
+        };
+        
+        document.getElementById('pageTitle').textContent = titles[module];
+        
+        // Load module content
+        switch (module) {
+            case 'dashboard':
+                this.loadDashboard();
+                break;
+            case 'appointments':
+                this.loadAppointments();
+                break;
+            case 'clients':
+                this.loadClients();
+                break;
+            case 'services':
+                this.loadServices();
+                break;
+            case 'staff':
+                this.loadStaff();
+                break;
+            case 'reports':
+                this.loadReports();
+                break;
+            case 'users':
+                this.loadUsers();
+                break;
+            case 'audit':
+                this.loadAudit();
+                break;
+        }
+    },
+    
+    async loadDashboard() {
+        try {
+            const response = await API.getDashboardData();
+            if (!response.success) return;
+            
+            const data = response.data;
+            
+            // Update stats
+            document.getElementById('todayAppts').textContent = data.todayAppts.length;
+            document.getElementById('totalClients').textContent = data.totalClients;
+            document.getElementById('totalServices').textContent = data.totalServices;
+            document.getElementById('totalStaff').textContent = data.totalStaff;
+            document.getElementById('upcomingCount').textContent = data.upcomingCount;
+            document.getElementById('completedCount').textContent = data.completedCount;
+            document.getElementById('totalRevenue').textContent = `$${data.totalRevenue.toLocaleString()}`;
+            
+            // Render today's schedule
+            const scheduleHtml = data.todayAppts.length ? data.todayAppts.map(appt => `
+                <div class="schedule-item">
+                    <div class="schedule-time">${UI.formatTime12(appt.time)}</div>
+                    <div class="schedule-line" style="background-color: ${appt.staff_color};"></div>
+                    <div class="schedule-info">
+                        <p class="schedule-client">${appt.client_name}</p>
+                        <p class="schedule-service">${appt.service_name} · ${appt.staff_name}</p>
+                    </div>
+                    <span class="status-badge" data-status="${appt.status}">${UI.formatStatus(appt.status)}</span>
+                </div>
+            `).join('') : '<p class="no-data">No appointments today</p>';
+            
+            document.getElementById('todaySchedule').innerHTML = scheduleHtml;
+            
+            // Render status summary
+            const statusHtml = `
+                <div class="status-chart">
+                    ${Object.entries(data.statusCounts).map(([status, count]) => {
+                        const percent = data.todayAppts.length ? (count / data.todayAppts.length) * 100 : 0;
+                        return `
+                            <div class="status-row">
+                                <span>${UI.formatStatus(status)}</span>
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: ${percent}%; background-color: ${UI.getStatusColor(status)};"></div>
+                                </div>
+                                <span class="count">${count}</span>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+            
+            document.getElementById('statusSummary').innerHTML = statusHtml;
+            
+        } catch (error) {
+            console.error('Error loading dashboard:', error);
+        }
+    },
+    
+    async loadAppointments() {
+        // Load appointments list with table
+        console.log('Loading appointments...');
+    },
+    
+    async loadClients() {
+        console.log('Loading clients...');
+    },
+    
+    async loadServices() {
+        console.log('Loading services...');
+    },
+    
+    async loadStaff() {
+        console.log('Loading staff...');
+    },
+    
+    async loadReports() {
+        console.log('Loading reports...');
+    },
+    
+    async loadUsers() {
+        console.log('Loading users...');
+    },
+    
+    async loadAudit() {
+        console.log('Loading audit trail...');
+    },
+    
+    hasPermission(module) {
+        const permissions = {
+            'admin': ['dashboard', 'appointments', 'clients', 'services', 'staff', 'reports', 'users', 'audit'],
+            'receptionist': ['dashboard', 'appointments', 'clients', 'services', 'staff', 'reports'],
+            'staff': ['dashboard', 'appointments']
+        };
+        
+        return permissions[this.currentUser.role]?.includes(module) || false;
+    }
+};
+
+// Initialize app when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    App.init();
+});

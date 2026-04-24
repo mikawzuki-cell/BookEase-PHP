@@ -1,0 +1,39 @@
+# PHP
+*.phar
+/vendor/
+composer.phar
+composer.lock
+
+# Database
+*.sql.gz
+backups/
+logs/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Configuration
+config/database.php (if using local credentials)
+
+# Cache
+/tmp/
+/cache/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Sensitive
+/node_modules/
+*.key
+*.pem

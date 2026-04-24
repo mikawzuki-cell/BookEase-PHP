@@ -1,0 +1,81 @@
+<?php
+/**
+ * PUT /api/services/update.php
+ */
+
+$ALLOW_NO_AUTH = false;
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/audit.php';
+
+header('Content-Type: application/json');
+
+$user = $auth->getCurrentUser();
+if (!$user) {
+    apiResponse(false, null, 'Unauthorized', API_UNAUTHORIZED);
+}
+
+if (!$auth->checkPermission('services')) {
+    apiResponse(false, null, 'Permission denied', API_FORBIDDEN);
+}
+
+$data = json_decode(file_get_contents('php://input'), true);
+
+if (empty($data['id'])) {
+    apiResponse(false, null, 'Service ID required', API_BAD_REQUEST);
+}
+
+$serviceId = sanitize($data['id']);
+
+$updates = [];
+$params = [];
+$types = "";
+
+if (isset($data['name'])) {
+    $updates[] = "name = ?";
+    $params[] = sanitize($data['name']);
+    $types .= "s";
+}
+
+if (isset($data['duration'])) {
+    $updates[] = "duration = ?";
+    $params[] = (int)$data['duration'];
+    $types .= "i";
+}
+
+if (isset($data['price'])) {
+    $updates[] = "price = ?";
+    $params[] = (float)$data['price'];
+    $types .= "d";
+}
+
+if (isset($data['description'])) {
+    $updates[] = "description = ?";
+    $params[] = sanitize($data['description']);
+    $types .= "s";
+}
+
+if (isset($data['category'])) {
+    $updates[] = "category = ?";
+    $params[] = sanitize($data['category']);
+    $types .= "s";
+}
+
+if (empty($updates)) {
+    apiResponse(false, null, 'No updates provided', API_BAD_REQUEST);
+}
+
+$params[] = $serviceId;
+$types .= "s";
+
+$query = "UPDATE services SET " . implode(", ", $updates) . " WHERE id = ?";
+$stmt = $conn->prepare($query);
+$stmt->bind_param($types, ...$params);
+
+if ($stmt->execute()) {
+    logAuditAction($user['id'], 'UPDATE', 'Services', "Updated service #{$serviceId}");
+    apiResponse(true, ['id' => $serviceId], 'Service updated successfully');
+} else {
+    apiResponse(false, null, 'Failed to update service', API_SERVER_ERROR);
+}
+
+?>

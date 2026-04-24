@@ -1,0 +1,138 @@
+<?php
+/**
+ * PUT /api/appointments/update.php
+ * Update appointment with conflict checking
+ */
+
+$ALLOW_NO_AUTH = false;
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/audit.php';
+
+header('Content-Type: application/json');
+
+$user = $auth->getCurrentUser();
+if (!$user) {
+    apiResponse(false, null, 'Unauthorized', API_UNAUTHORIZED);
+}
+
+if (!$auth->checkPermission('appointments')) {
+    apiResponse(false, null, 'Permission denied', API_FORBIDDEN);
+}
+
+$data = json_decode(file_get_contents('php://input'), true);
+
+if (empty($data['id'])) {
+    apiResponse(false, null, 'Appointment ID required', API_BAD_REQUEST);
+}
+
+$appointmentId = sanitize($data['id']);
+
+// Get existing appointment
+$stmt = $conn->prepare("SELECT * FROM appointments WHERE id = ?");
+$stmt->bind_param("s", $appointmentId);
+$stmt->execute();
+$appointment = $stmt->get_result()->fetch_assoc();
+
+if (!$appointment) {
+    apiResponse(false, null, 'Appointment not found', API_NOT_FOUND);
+}
+
+// Prepare update data
+$updates = [];
+$params = [];
+$types = "";
+
+if (isset($data['status'])) {
+    $newStatus = sanitize($data['status']);
+    $oldStatus = $appointment['status'];
+    
+    // Check valid transition
+    $validTransitions = STATUS_TRANSITIONS[$oldStatus] ?? [];
+    if (!in_array($newStatus, $validTransitions)) {
+        apiResponse(false, null, "Invalid status transition from $oldStatus to $newStatus", API_BAD_REQUEST);
+    }
+    
+    $updates[] = "status = ?";
+    $params[] = $newStatus;
+    $types .= "s";
+}
+
+if (isset($data['notes'])) {
+    $notes = sanitize($data['notes']);
+    $updates[] = "notes = ?";
+    $params[] = $notes;
+    $types .= "s";
+}
+
+if (isset($data['time']) || isset($data['serviceId'])) {
+    $time = sanitize($data['time'] ?? $appointment['time']);
+    $serviceId = sanitize($data['serviceId'] ?? $appointment['service_id']);
+    
+    $service = getServiceById($serviceId);
+    $endTime = addMinutesToTime($time, $service['duration']);
+    
+    // Check conflicts (excluding current appointment)
+    $conflict = checkConflictExcluding($appointment['staff_id'], $appointment['date'], $time, $endTime, $appointmentId);
+    if ($conflict) {
+        apiResponse(false, ['conflict' => $conflict], 'Scheduling conflict', API_CONFLICT);
+    }
+    
+    $updates[] = "time = ?";
+    $updates[] = "end_time = ?";
+    $params[] = $time;
+    $params[] = $endTime;
+    $types .= "ss";
+}
+
+if (empty($updates)) {
+    apiResponse(false, null, 'No updates provided', API_BAD_REQUEST);
+}
+
+$params[] = $appointmentId;
+$types .= "s";
+
+$query = "UPDATE appointments SET " . implode(", ", $updates) . " WHERE id = ?";
+$stmt = $conn->prepare($query);
+$stmt->bind_param($types, ...$params);
+
+if ($stmt->execute()) {
+    logAuditAction($user['id'], 'UPDATE', 'Appointments', "Updated appointment #{$appointmentId}");
+    apiResponse(true, ['id' => $appointmentId], 'Appointment updated successfully');
+} else {
+    apiResponse(false, null, 'Failed to update appointment', API_SERVER_ERROR);
+}
+
+function checkConflictExcluding($staffId, $date, $time, $endTime, $excludeId) {
+    global $conn;
+    
+    $stmt = $conn->prepare("
+        SELECT * FROM appointments 
+        WHERE staff_id = ? AND date = ? AND id != ? AND status IN ('scheduled', 'confirmed', 'in-progress')
+    ");
+    
+    $stmt->bind_param("sss", $staffId, $date, $excludeId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    while ($appt = $result->fetch_assoc()) {
+        $apptStart = strtotime($appt['time']);
+        $apptEnd = strtotime($appt['end_time']);
+        $newStart = strtotime($time);
+        $newEnd = strtotime($endTime);
+        
+        if ($newStart < $apptEnd && $newEnd > $apptStart) {
+            return $appt;
+        }
+    }
+    return null;
+}
+
+function getServiceById($id) {
+    global $conn;
+    $stmt = $conn->prepare("SELECT * FROM services WHERE id = ?");
+    $stmt->bind_param("s", $id);
+    $stmt->execute();
+    return $stmt->get_result()->fetch_assoc();
+}
+
+?>

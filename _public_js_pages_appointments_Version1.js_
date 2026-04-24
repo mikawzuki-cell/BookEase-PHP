@@ -1,0 +1,169 @@
+/**
+ * Appointments Page Logic
+ */
+
+const AppointmentsPage = {
+    currentPage: 1,
+    editingId: null,
+    clients: [],
+    services: [],
+    staff: [],
+
+    async init() {
+        this.setupEventListeners();
+        await this.loadData();
+        await this.loadAppointments();
+    },
+
+    setupEventListeners() {
+        document.getElementById('addApptBtn').addEventListener('click', () => this.openModal());
+        document.getElementById('modalSubmitBtn').addEventListener('click', () => this.saveAppointment());
+        document.getElementById('appointmentSearch').addEventListener('input', Utils.debounce(() => {
+            this.currentPage = 1;
+            this.loadAppointments();
+        }, 300));
+        document.getElementById('filterDate').addEventListener('change', () => this.loadAppointments());
+        document.getElementById('filterStatus').addEventListener('change', () => this.loadAppointments());
+    },
+
+    async loadData() {
+        try {
+            const clientsRes = await API.getClients();
+            const servicesRes = await API.getServices();
+            const staffRes = await API.getStaff();
+
+            if (clientsRes.success) {
+                this.clients = clientsRes.data.clients;
+                this.populateSelect('apptClient', this.clients, 'name');
+            }
+            if (servicesRes.success) {
+                this.services = servicesRes.data.services;
+                this.populateSelect('apptService', this.services, 'name');
+            }
+            if (staffRes.success) {
+                this.staff = staffRes.data.staff;
+                this.populateSelect('apptStaff', this.staff, 'name');
+            }
+        } catch (error) {
+            console.error('Error loading data:', error);
+        }
+    },
+
+    async loadAppointments() {
+        const filters = {
+            search: document.getElementById('appointmentSearch').value,
+            filterDate: document.getElementById('filterDate').value,
+            filterStatus: document.getElementById('filterStatus').value,
+            page: this.currentPage
+        };
+
+        const response = await API.getAppointments(filters);
+        if (!response.success) return;
+
+        this.renderTable(response.data.appointments);
+        this.renderPagination(response.data);
+    },
+
+    renderTable(appointments) {
+        const tbody = document.getElementById('appointmentsBody');
+        tbody.innerHTML = appointments.map(appt => `
+            <tr>
+                <td>${appt.date}</td>
+                <td>${UI.formatTime12(appt.time)}</td>
+                <td>
+                    <div class="cell-content">
+                        <div class="avatar">${appt.client_name.split(' ').map(n => n[0]).join('')}</div>
+                        <div>
+                            <p>${appt.client_name}</p>
+                            <small>${appt.client_phone}</small>
+                        </div>
+                    </div>
+                </td>
+                <td>${appt.service_name}</td>
+                <td>
+                    <div class="staff-badge" style="background-color: ${appt.staff_color};">
+                        ${appt.staff_name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                    </div>
+                </td>
+                <td><span class="status-badge" data-status="${appt.status}">${UI.formatStatus(appt.status)}</span></td>
+                <td>
+                    <button class="btn-small" onclick="AppointmentsPage.openModal('${appt.id}')">Edit</button>
+                    <button class="btn-small btn-danger" onclick="AppointmentsPage.deleteAppointment('${appt.id}')">Delete</button>
+                </td>
+            </tr>
+        `).join('');
+    },
+
+    renderPagination(data) {
+        const container = document.getElementById('appointmentsPagination');
+        let html = `<div class="pagination">`;
+        
+        for (let i = 1; i <= data.totalPages; i++) {
+            html += `<button class="page-btn ${i === data.page ? 'active' : ''}" onclick="AppointmentsPage.currentPage = ${i}; AppointmentsPage.loadAppointments();">${i}</button>`;
+        }
+        
+        html += `</div>`;
+        container.innerHTML = html;
+    },
+
+    async openModal(appointmentId = null) {
+        if (appointmentId) {
+            this.editingId = appointmentId;
+            document.getElementById('modalTitle').textContent = 'Edit Appointment';
+            document.getElementById('statusGroup').style.display = 'block';
+            // Load appointment data
+            // Fill form...
+        } else {
+            this.editingId = null;
+            document.getElementById('modalTitle').textContent = 'Book Appointment';
+            document.getElementById('statusGroup').style.display = 'none';
+            document.getElementById('appointmentModal').style.display = 'flex';
+        }
+    },
+
+    async saveAppointment() {
+        const data = {
+            date: document.getElementById('apptDate').value,
+            time: document.getElementById('apptTime').value,
+            clientId: document.getElementById('apptClient').value,
+            serviceId: document.getElementById('apptService').value,
+            staffId: document.getElementById('apptStaff').value,
+            notes: document.getElementById('apptNotes').value
+        };
+
+        const response = this.editingId 
+            ? await API.updateAppointment({ id: this.editingId, ...data })
+            : await API.createAppointment(data);
+
+        if (response.success) {
+            UI.showNotification(response.message, 'success');
+            closeModal('#appointmentModal');
+            this.loadAppointments();
+        } else {
+            UI.showNotification(response.message, 'error');
+        }
+    },
+
+    async deleteAppointment(appointmentId) {
+        if (!confirm('Are you sure you want to delete this appointment?')) return;
+
+        const response = await API.deleteAppointment(appointmentId);
+        if (response.success) {
+            UI.showNotification('Appointment deleted', 'success');
+            this.loadAppointments();
+        } else {
+            UI.showNotification(response.message, 'error');
+        }
+    },
+
+    populateSelect(selectId, items, labelField) {
+        const select = document.getElementById(selectId);
+        select.innerHTML = '<option value="">-- Select --</option>' + 
+            items.map(item => `<option value="${item.id}">${item[labelField]}</option>`).join('');
+    }
+};
+
+// Initialize on load
+document.addEventListener('DOMContentLoaded', () => {
+    AppointmentsPage.init();
+});

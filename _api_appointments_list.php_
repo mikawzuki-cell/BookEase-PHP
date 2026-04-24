@@ -1,0 +1,128 @@
+<?php
+/**
+ * GET /api/appointments/list.php
+ * List appointments with filters
+ */
+
+$ALLOW_NO_AUTH = false;
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/audit.php';
+
+header('Content-Type: application/json');
+
+$user = $auth->getCurrentUser();
+if (!$user) {
+    apiResponse(false, null, 'Unauthorized', API_UNAUTHORIZED);
+}
+
+if (!$auth->checkPermission('appointments')) {
+    apiResponse(false, null, 'Permission denied', API_FORBIDDEN);
+}
+
+// Get filters from query parameters
+$search = sanitize($_GET['search'] ?? '');
+$filterDate = sanitize($_GET['filterDate'] ?? '');
+$filterStatus = sanitize($_GET['filterStatus'] ?? '');
+$filterStaff = sanitize($_GET['filterStaff'] ?? '');
+$page = (int)($_GET['page'] ?? 1);
+
+// Role-based filtering
+$staffFilter = '';
+$staffParams = [];
+$staffTypes = '';
+
+if ($user['role'] === 'staff' && $user['staff_id']) {
+    $staffFilter = " AND a.staff_id = ?";
+    $staffParams[] = $user['staff_id'];
+    $staffTypes = 's';
+}
+
+// Build query
+$query = "
+    SELECT a.id, a.client_id, a.service_id, a.staff_id, a.date, a.time, a.end_time, a.status, a.notes,
+           c.name as client_name, c.phone as client_phone, c.email as client_email,
+           s.name as service_name, s.duration, s.price,
+           st.name as staff_name, st.specialization, st.color
+    FROM appointments a
+    JOIN clients c ON a.client_id = c.id
+    JOIN services s ON a.service_id = s.id
+    JOIN staff st ON a.staff_id = st.id
+    WHERE 1=1
+";
+
+$params = [];
+$types = "";
+
+// Apply filters
+if ($search) {
+    $search_pattern = "%$search%";
+    $query .= " AND (c.name LIKE ? OR s.name LIKE ? OR st.name LIKE ?)";
+    $params = [$search_pattern, $search_pattern, $search_pattern];
+    $types = "sss";
+}
+
+if ($filterDate) {
+    $query .= " AND a.date = ?";
+    $params[] = $filterDate;
+    $types .= "s";
+}
+
+if ($filterStatus && $filterStatus !== 'all') {
+    $query .= " AND a.status = ?";
+    $params[] = $filterStatus;
+    $types .= "s";
+}
+
+if ($filterStaff && $filterStaff !== 'all') {
+    $query .= " AND a.staff_id = ?";
+    $params[] = $filterStaff;
+    $types .= "s";
+}
+
+$query .= $staffFilter;
+$params = array_merge($params, $staffParams);
+$types .= $staffTypes;
+
+$query .= " ORDER BY a.date DESC, a.time DESC";
+
+// Count total
+$countQuery = str_replace(
+    "SELECT a.id, a.client_id, a.service_id, a.staff_id, a.date, a.time, a.end_time, a.status, a.notes,
+           c.name as client_name, c.phone as client_phone, c.email as client_email,
+           s.name as service_name, s.duration, s.price,
+           st.name as staff_name, st.specialization, st.color",
+    "SELECT COUNT(*) as total",
+    $query
+);
+$countQuery = str_replace(" ORDER BY a.date DESC, a.time DESC", "", $countQuery);
+
+$stmt = $conn->prepare($countQuery);
+if (!empty($params)) {
+    $stmt->bind_param($types, ...$params);
+}
+$stmt->execute();
+$total = $stmt->get_result()->fetch_assoc()['total'];
+
+// Paginate
+$limit = ITEMS_PER_PAGE;
+$offset = ($page - 1) * $limit;
+$query .= " LIMIT ? OFFSET ?";
+$params[] = $limit;
+$params[] = $offset;
+$types .= "ii";
+
+$stmt = $conn->prepare($query);
+if (!empty($params)) {
+    $stmt->bind_param($types, ...$params);
+}
+$stmt->execute();
+$appointments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+apiResponse(true, [
+    'appointments' => $appointments,
+    'total' => $total,
+    'page' => $page,
+    'totalPages' => ceil($total / $limit)
+], 'Appointments retrieved');
+
+?>

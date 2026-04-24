@@ -1,0 +1,39 @@
+<?php
+/**
+ * DELETE /api/services/delete.php
+ */
+
+$ALLOW_NO_AUTH = false;
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/audit.php';
+
+header('Content-Type: application/json');
+
+$user = $auth->getCurrentUser();
+if (!$user) {
+    apiResponse(false, null, 'Unauthorized', API_UNAUTHORIZED);
+}
+
+if (!$auth->checkPermission('services')) {
+    apiResponse(false, null, 'Permission denied', API_FORBIDDEN);
+}
+
+$data = json_decode(file_get_contents('php://input'), true);
+
+if (empty($data['id'])) {
+    apiResponse(false, null, 'Service ID required', API_BAD_REQUEST);
+}
+
+$serviceId = sanitize($data['id']);
+
+$stmt = $conn->prepare("DELETE FROM services WHERE id = ?");
+$stmt->bind_param("s", $serviceId);
+
+if ($stmt->execute()) {
+    logAuditAction($user['id'], 'DELETE', 'Services', "Deleted service #{$serviceId}");
+    apiResponse(true, null, 'Service deleted successfully');
+} else {
+    apiResponse(false, null, 'Failed to delete service', API_SERVER_ERROR);
+}
+
+?>

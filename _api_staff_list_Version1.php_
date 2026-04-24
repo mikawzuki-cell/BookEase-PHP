@@ -1,0 +1,78 @@
+<?php
+/**
+ * GET /api/staff/list.php
+ */
+
+$ALLOW_NO_AUTH = false;
+require_once __DIR__ . '/../../includes/auth.php';
+
+header('Content-Type: application/json');
+
+$user = $auth->getCurrentUser();
+if (!$user) {
+    apiResponse(false, null, 'Unauthorized', API_UNAUTHORIZED);
+}
+
+if (!$auth->checkPermission('staff')) {
+    apiResponse(false, null, 'Permission denied', API_FORBIDDEN);
+}
+
+$search = sanitize($_GET['search'] ?? '');
+$page = (int)($_GET['page'] ?? 1);
+
+$query = "
+    SELECT s.*, COUNT(a.id) as total_appointments, 
+           SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed_appointments
+    FROM staff s
+    LEFT JOIN appointments a ON s.id = a.staff_id
+    WHERE 1=1
+";
+
+$params = [];
+$types = "";
+
+if ($search) {
+    $search_pattern = "%$search%";
+    $query .= " AND (s.name LIKE ? OR s.specialization LIKE ?)";
+    $params = [$search_pattern, $search_pattern];
+    $types = "ss";
+}
+
+$query .= " GROUP BY s.id ORDER BY s.name ASC";
+
+// Count
+$countQuery = "SELECT COUNT(DISTINCT s.id) as total FROM staff s WHERE 1=1";
+if ($search) {
+    $countQuery .= " AND (s.name LIKE ? OR s.specialization LIKE ?)";
+}
+
+$stmt = $conn->prepare($countQuery);
+if (!empty($params)) {
+    $stmt->bind_param($types, ...$params);
+}
+$stmt->execute();
+$total = $stmt->get_result()->fetch_assoc()['total'];
+
+// Paginate
+$limit = ITEMS_PER_PAGE;
+$offset = ($page - 1) * $limit;
+$query .= " LIMIT ? OFFSET ?";
+$params[] = $limit;
+$params[] = $offset;
+$types .= "ii";
+
+$stmt = $conn->prepare($query);
+if (!empty($params)) {
+    $stmt->bind_param($types, ...$params);
+}
+$stmt->execute();
+$staff = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+apiResponse(true, [
+    'staff' => $staff,
+    'total' => $total,
+    'page' => $page,
+    'totalPages' => ceil($total / $limit)
+], 'Staff retrieved');
+
+?>

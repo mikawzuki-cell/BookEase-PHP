@@ -1,0 +1,26 @@
+<?php
+/**
+ * POST /api/auth/login.php
+ */
+
+$ALLOW_NO_AUTH = true;
+session_start();
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/audit.php';
+
+header('Content-Type: application/json');
+
+$data = json_decode(file_get_contents('php://input'), true);
+
+$username = $data['username'] ?? '';
+$password = $data['password'] ?? '';
+
+$result = $auth->login($username, $password);
+
+if ($result['success']) {
+    apiResponse(true, $result['user'], $result['message'], API_SUCCESS);
+} else {
+    apiResponse(false, null, $result['message'], API_UNAUTHORIZED);
+}
+
+?>

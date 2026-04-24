@@ -1,0 +1,131 @@
+<?php
+/**
+ * POST /api/appointments/create.php
+ * Create new appointment with conflict checking
+ */
+
+$ALLOW_NO_AUTH = false;
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/audit.php';
+
+header('Content-Type: application/json');
+
+$user = $auth->getCurrentUser();
+if (!$user) {
+    apiResponse(false, null, 'Unauthorized', API_UNAUTHORIZED);
+}
+
+if (!$auth->checkPermission('appointments')) {
+    apiResponse(false, null, 'Permission denied', API_FORBIDDEN);
+}
+
+// Get JSON data
+$data = json_decode(file_get_contents('php://input'), true);
+
+// Validate input
+$errors = [];
+
+if (empty($data['clientId'])) $errors['clientId'] = 'Client is required';
+if (empty($data['serviceId'])) $errors['serviceId'] = 'Service is required';
+if (empty($data['staffId'])) $errors['staffId'] = 'Staff member is required';
+if (empty($data['date'])) $errors['date'] = 'Date is required';
+if (empty($data['time'])) $errors['time'] = 'Time is required';
+
+if (!empty($errors)) {
+    apiResponse(false, ['errors' => $errors], 'Validation failed', API_BAD_REQUEST);
+}
+
+$clientId = sanitize($data['clientId']);
+$serviceId = sanitize($data['serviceId']);
+$staffId = sanitize($data['staffId']);
+$date = sanitize($data['date']);
+$time = sanitize($data['time']);
+$notes = sanitize($data['notes'] ?? '');
+
+// Verify references exist
+$client = getClientById($clientId);
+if (!$client) {
+    apiResponse(false, null, 'Client not found', API_NOT_FOUND);
+}
+
+$service = getServiceById($serviceId);
+if (!$service) {
+    apiResponse(false, null, 'Service not found', API_NOT_FOUND);
+}
+
+$staff = getStaffById($staffId);
+if (!$staff) {
+    apiResponse(false, null, 'Staff member not found', API_NOT_FOUND);
+}
+
+// Calculate end time
+$endTime = addMinutesToTime($time, $service['duration']);
+
+// Check for conflicts
+$conflict = checkAppointmentConflict($staffId, $date, $time, $endTime);
+if ($conflict) {
+    $conflictClient = getClientById($conflict['client_id']);
+    $message = "Scheduling conflict: {$staff['name']} already has an appointment from {$conflict['time']}–{$conflict['end_time']} with {$conflictClient['name']}";
+    apiResponse(false, ['conflict' => $conflict], $message, API_CONFLICT);
+}
+
+// Create appointment
+$appointmentId = generateId('appt');
+$status = 'scheduled';
+
+$stmt = $conn->prepare("
+    INSERT INTO appointments (id, client_id, service_id, staff_id, date, time, end_time, status, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+");
+
+$stmt->bind_param(
+    "sssssssss",
+    $appointmentId, $clientId, $serviceId, $staffId, $date, $time, $endTime, $status, $notes
+);
+
+if ($stmt->execute()) {
+    logAuditAction($user['id'], 'CREATE', 'Appointments', 
+        "Created appointment #{$appointmentId}", null, 
+        ['client' => $client['name'], 'service' => $service['name'], 'staff' => $staff['name'], 'date' => $date, 'time' => $time]
+    );
+    
+    apiResponse(true, ['id' => $appointmentId], 'Appointment created successfully', API_CREATED);
+} else {
+    apiResponse(false, null, 'Failed to create appointment', API_SERVER_ERROR);
+}
+
+function getClientById($id) {
+    global $conn;
+    $stmt = $conn->prepare("SELECT * FROM clients WHERE id = ?");
+    $stmt->bind_param("s", $id);
+    $stmt->execute();
+    return $stmt->get_result()->fetch_assoc();
+}
+
+function checkAppointmentConflict($staffId, $date, $time, $endTime) {
+    global $conn;
+    
+    $stmt = $conn->prepare("
+        SELECT * FROM appointments 
+        WHERE staff_id = ? AND date = ? AND status IN ('scheduled', 'confirmed', 'in-progress')
+    ");
+    
+    $stmt->bind_param("ss", $staffId, $date);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    while ($appt = $result->fetch_assoc()) {
+        $apptStart = strtotime($appt['time']);
+        $apptEnd = strtotime($appt['end_time']);
+        $newStart = strtotime($time);
+        $newEnd = strtotime($endTime);
+        
+        if ($newStart < $apptEnd && $newEnd > $apptStart) {
+            return $appt;
+        }
+    }
+    
+    return null;
+}
+
+?>

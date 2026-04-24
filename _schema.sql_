@@ -1,0 +1,114 @@
+-- Create Database
+CREATE DATABASE IF NOT EXISTS bookease_db;
+USE bookease_db;
+SET NAMES utf8mb4;
+SET CHARACTER SET utf8mb4;
+
+-- Users Table
+CREATE TABLE users (
+  id VARCHAR(20) PRIMARY KEY,
+  username VARCHAR(50) NOT NULL UNIQUE,
+  full_name VARCHAR(100) NOT NULL,
+  email VARCHAR(100) NOT NULL UNIQUE,
+  role ENUM('admin', 'receptionist', 'staff') NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  enabled BOOLEAN DEFAULT 1,
+  staff_id VARCHAR(20) NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  last_login DATETIME NULL,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_username (username),
+  INDEX idx_email (email),
+  INDEX idx_role (role),
+  FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Clients Table
+CREATE TABLE clients (
+  id VARCHAR(20) PRIMARY KEY,
+  name VARCHAR(150) NOT NULL,
+  phone VARCHAR(20) NOT NULL,
+  email VARCHAR(100),
+  address TEXT,
+  notes TEXT,
+  created_at DATE NOT NULL,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_name (name),
+  INDEX idx_phone (phone),
+  INDEX idx_email (email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Services Table
+CREATE TABLE services (
+  id VARCHAR(20) PRIMARY KEY,
+  name VARCHAR(150) NOT NULL UNIQUE,
+  duration INT NOT NULL COMMENT 'Duration in minutes',
+  price DECIMAL(10, 2) NOT NULL,
+  description TEXT,
+  category VARCHAR(50) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_category (category),
+  INDEX idx_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Staff Table
+CREATE TABLE staff (
+  id VARCHAR(20) PRIMARY KEY,
+  name VARCHAR(150) NOT NULL,
+  specialization VARCHAR(100) NOT NULL,
+  phone VARCHAR(20),
+  email VARCHAR(100),
+  color VARCHAR(7) NOT NULL COMMENT 'Hex color for calendar',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Appointments Table
+CREATE TABLE appointments (
+  id VARCHAR(20) PRIMARY KEY,
+  client_id VARCHAR(20) NOT NULL,
+  service_id VARCHAR(20) NOT NULL,
+  staff_id VARCHAR(20) NOT NULL,
+  date DATE NOT NULL,
+  time TIME NOT NULL,
+  end_time TIME NOT NULL COMMENT 'Calculated end time based on service duration',
+  status ENUM('scheduled', 'confirmed', 'in-progress', 'completed', 'cancelled', 'no-show') DEFAULT 'scheduled',
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_date (date),
+  INDEX idx_client (client_id),
+  INDEX idx_staff (staff_id),
+  INDEX idx_status (status),
+  INDEX idx_staff_date (staff_id, date),
+  UNIQUE KEY unique_appointment (id),
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE,
+  FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Audit Logs Table
+CREATE TABLE audit_logs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id VARCHAR(20) NOT NULL,
+  action VARCHAR(100) NOT NULL,
+  module VARCHAR(50) NOT NULL,
+  description TEXT,
+  old_values JSON,
+  new_values JSON,
+  ip_address VARCHAR(45),
+  user_agent TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_user (user_id),
+  INDEX idx_created (created_at),
+  INDEX idx_module (module),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Seed Admin User
+INSERT INTO users (id, username, full_name, email, role, password_hash, enabled, created_at)
+VALUES ('usr1', 'admin', 'Admin User', 'admin@bookease.com', 'admin', '$2y$10$ADMIN_HASH_HERE', 1, NOW());
+
+-- Create seed data stored procedures or populate manually

@@ -1,0 +1,49 @@
+<?php
+/**
+ * GET /api/audit/logs.php
+ */
+
+$ALLOW_NO_AUTH = false;
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/audit.php';
+
+header('Content-Type: application/json');
+
+$user = $auth->getCurrentUser();
+if (!$user) {
+    apiResponse(false, null, 'Unauthorized', API_UNAUTHORIZED);
+}
+
+if ($user['role'] !== 'admin') {
+    apiResponse(false, null, 'Permission denied', API_FORBIDDEN);
+}
+
+$page = (int)($_GET['page'] ?? 1);
+$module = sanitize($_GET['module'] ?? '');
+
+$limit = ITEMS_PER_PAGE;
+$offset = ($page - 1) * $limit;
+
+$logs = getAuditLogs($limit, $offset, $module ?: null);
+
+// Count total
+$countQuery = "SELECT COUNT(*) as total FROM audit_logs";
+if ($module) {
+    $countQuery .= " WHERE module = ?";
+}
+
+$stmt = $conn->prepare($countQuery);
+if ($module) {
+    $stmt->bind_param("s", $module);
+}
+$stmt->execute();
+$total = $stmt->get_result()->fetch_assoc()['total'];
+
+apiResponse(true, [
+    'logs' => $logs,
+    'total' => $total,
+    'page' => $page,
+    'totalPages' => ceil($total / $limit)
+], 'Audit logs retrieved');
+
+?>

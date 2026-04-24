@@ -1,0 +1,11 @@
+<?php
+/**
+ * POST /api/auth/logout.php
+ */
+
+$ALLOW_NO_AUTH = true;
+require_once __DIR__ . '/../../includes/auth.php';
+
+$auth->logout();
+
+?>

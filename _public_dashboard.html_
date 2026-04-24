@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - BookEase</title>
+    <link rel="stylesheet" href="css/global.css">
+    <link rel="stylesheet" href="css/theme.css">
+    <link rel="stylesheet" href="css/responsive.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo-icon">✂️</div>
+                <div>
+                    <p class="app-name">BookEase</p>
+                    <p class="app-subtitle">Clinic & Salon System</p>
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <p class="nav-label">Navigation</p>
+                <a href="#dashboard" class="nav-link active" data-module="dashboard">
+                    <span class="icon">📊</span>
+                    <span>Dashboard</span>
+                </a>
+                <a href="#appointments" class="nav-link" data-module="appointments">
+                    <span class="icon">📅</span>
+                    <span>Appointments</span>
+                </a>
+                <a href="#clients" class="nav-link" data-module="clients">
+                    <span class="icon">👥</span>
+                    <span>Clients</span>
+                </a>
+                <a href="#services" class="nav-link" data-module="services">
+                    <span class="icon">✂️</span>
+                    <span>Services</span>
+                </a>
+                <a href="#staff" class="nav-link" data-module="staff">
+                    <span class="icon">👨‍⚕️</span>
+                    <span>Staff</span>
+                </a>
+                <a href="#reports" class="nav-link" data-module="reports">
+                    <span class="icon">📈</span>
+                    <span>Reports</span>
+                </a>
+                <div id="admin-section" style="display: none;">
+                    <p class="nav-label">Administration</p>
+                    <a href="#users" class="nav-link" data-module="users">
+                        <span class="icon">👤</span>
+                        <span>User Management</span>
+                    </a>
+                    <a href="#audit" class="nav-link" data-module="audit">
+                        <span class="icon">🔒</span>
+                        <span>Audit Trail</span>
+                    </a>
+                </div>
+            </nav>
+            
+            <div class="user-card">
+                <div class="user-avatar" id="userInitials">AD</div>
+                <div class="user-info">
+                    <p class="user-name" id="userName">Admin User</p>
+                    <span class="user-role" id="userRole">admin</span>
+                </div>
+                <button id="logoutBtn" class="logout-btn" title="Logout">🚪</button>
+            </div>
+        </aside>
+        
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Top Bar -->
+            <header class="top-bar">
+                <button id="menuBtn" class="menu-btn">☰</button>
+                <h1 id="pageTitle">Dashboard</h1>
+                <div class="user-section">
+                    <span id="userDisplay">Admin User</span>
+                    <div class="user-avatar-small" id="userAvatarSmall">AD</div>
+                </div>
+            </header>
+            
+            <!-- Content Area -->
+            <div class="content-area">
+                <!-- Dashboard Page -->
+                <section id="dashboard-page" class="page-content">
+                    <div class="welcome-section" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 16px; color: white; margin-bottom: 30px;">
+                        <p style="margin: 0 0 10px; opacity: 0.9; font-size: 14px;" id="greeting">Good morning,</p>
+                        <h2 style="margin: 0 0 15px; font-size: 24px;">Welcome back, <span id="welcomeName">Admin</span>!</h2>
+                        <p style="margin: 0 0 20px; opacity: 0.9; font-size: 14px;" id="dateDisplay"></p>
+                        
+                        <div style="display: flex; gap: 30px; margin-top: 20px;">
+                            <div>
+                                <p style="margin: 0; opacity: 0.8; font-size: 12px;">Upcoming Today</p>
+                                <p style="margin: 5px 0 0; font-size: 28px; font-weight: 700;" id="upcomingCount">0</p>
+                            </div>
+                            <div style="width: 1px; background: rgba(255,255,255,0.3);"></div>
+                            <div>
+                                <p style="margin: 0; opacity: 0.8; font-size: 12px;">Completed Today</p>
+                                <p style="margin: 5px 0 0; font-size: 28px; font-weight: 700;" id="completedCount">0</p>
+                            </div>
+                            <div style="width: 1px; background: rgba(255,255,255,0.3);"></div>
+                            <div>
+                                <p style="margin: 0; opacity: 0.8; font-size: 12px;">Revenue (All Time)</p>
+                                <p style="margin: 5px 0 0; font-size: 28px; font-weight: 700;" id="totalRevenue">$0</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Stats Grid -->
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon" style="background: #e0e7ff; color: #4f46e5;">📅</div>
+                            <div>
+                                <p class="stat-value" id="todayAppts">0</p>
+                                <p class="stat-label">Today's Appointments</p>
+                            </div>
+                        </div>
+                        
+                        <div class="stat-card">
+                            <div class="stat-icon" style="background: #ccfbf1; color: #0d9488;">👥</div>
+                            <div>
+                                <p class="stat-value" id="totalClients">0</p>
+                                <p class="stat-label">Total Clients</p>
+                            </div>
+                        </div>
+                        
+                        <div class="stat-card">
+                            <div class="stat-icon" style="background: #fef3c7; color: #b45309;">✂️</div>
+                            <div>
+                                <p class="stat-value" id="totalServices">0</p>
+                                <p class="stat-label">Active Services</p>
+                            </div>
+                        </div>
+                        
+                        <div class="stat-card">
+                            <div class="stat-icon" style="background: #f3e8ff; color: #7c3aed;">👨‍⚕️</div>
+                            <div>
+                                <p class="stat-value" id="totalStaff">0</p>
+                                <p class="stat-label">Staff Members</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Today's Schedule and Status Summary -->
+                    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-top: 20px;">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>Today's Schedule</h3>
+                                <a href="#appointments" style="color: #4f46e5; text-decoration: none; font-size: 12px; font-weight: 600;">View all →</a>
+                            </div>
+                            <div id="todaySchedule"></div>
+                        </div>
+                        
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>Status Summary</h3>
+                            </div>
+                            <div id="statusSummary"></div>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- Appointments Page (placeholder) -->
+                <section id="appointments-page" class="page-content" style="display: none;">
+                    <h2>Appointments</h2>
+                    <div id="appointmentsContent"></div>
+                </section>
+                
+                <!-- Similar sections for other pages -->
+            </div>
+        </main>
+    </div>
+    
+    <script src="js/utils.js"></script>
+    <script src="js/api-client.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/ui-components.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+<?php
+/**
+ * DELETE /api/clients/delete.php
+ */
+
+$ALLOW_NO_AUTH = false;
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/audit.php';
+
+header('Content-Type: application/json');
+
+$user = $auth->getCurrentUser();
+if (!$user) {
+    apiResponse(false, null, 'Unauthorized', API_UNAUTHORIZED);
+}
+
+if (!$auth->checkPermission('clients')) {
+    apiResponse(false, null, 'Permission denied', API_FORBIDDEN);
+}
+
+$data = json_decode(file_get_contents('php://input'), true);
+
+if (empty($data['id'])) {
+    apiResponse(false, null, 'Client ID required', API_BAD_REQUEST);
+}
+
+$clientId = sanitize($data['id']);
+
+$stmt = $conn->prepare("DELETE FROM clients WHERE id = ?");
+$stmt->bind_param("s", $clientId);
+
+if ($stmt->execute()) {
+    logAuditAction($user['id'], 'DELETE', 'Clients', "Deleted client #{$clientId}");
+    apiResponse(true, null, 'Client deleted successfully');
+} else {
+    apiResponse(false, null, 'Failed to delete client', API_SERVER_ERROR);
+}
+
+?>

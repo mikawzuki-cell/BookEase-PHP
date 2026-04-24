@@ -1,0 +1,81 @@
+<?php
+/**
+ * PUT /api/clients/update.php
+ */
+
+$ALLOW_NO_AUTH = false;
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/audit.php';
+
+header('Content-Type: application/json');
+
+$user = $auth->getCurrentUser();
+if (!$user) {
+    apiResponse(false, null, 'Unauthorized', API_UNAUTHORIZED);
+}
+
+if (!$auth->checkPermission('clients')) {
+    apiResponse(false, null, 'Permission denied', API_FORBIDDEN);
+}
+
+$data = json_decode(file_get_contents('php://input'), true);
+
+if (empty($data['id'])) {
+    apiResponse(false, null, 'Client ID required', API_BAD_REQUEST);
+}
+
+$clientId = sanitize($data['id']);
+
+// Get existing
+$stmt = $conn->prepare("SELECT * FROM clients WHERE id = ?");
+$stmt->bind_param("s", $clientId);
+$stmt->execute();
+$client = $stmt->get_result()->fetch_assoc();
+
+if (!$client) {
+    apiResponse(false, null, 'Client not found', API_NOT_FOUND);
+}
+
+// Validate updates
+$errors = [];
+if (isset($data['name']) && empty($data['name'])) $errors['name'] = 'Name cannot be empty';
+if (isset($data['phone']) && !validatePhone($data['phone'])) $errors['phone'] = 'Invalid phone format';
+if (isset($data['email']) && !empty($data['email']) && !validateEmail($data['email'])) {
+    $errors['email'] = 'Invalid email format';
+}
+
+if (!empty($errors)) {
+    apiResponse(false, ['errors' => $errors], 'Validation failed', API_BAD_REQUEST);
+}
+
+$updates = [];
+$params = [];
+$types = "";
+
+foreach (['name', 'phone', 'email', 'address', 'notes'] as $field) {
+    if (isset($data[$field])) {
+        $updates[] = "$field = ?";
+        $params[] = sanitize($data[$field]);
+        $types .= "s";
+    }
+}
+
+if (empty($updates)) {
+    apiResponse(false, null, 'No updates provided', API_BAD_REQUEST);
+}
+
+$params[] = $clientId;
+$types .= "s";
+
+$query = "UPDATE clients SET " . implode(", ", $updates) . " WHERE id = ?";
+$stmt = $conn->prepare($query);
+$stmt->bind_param($types, ...$params);
+
+if ($stmt->execute()) {
+    logAuditAction($user['id'], 'UPDATE', 'Clients', "Updated client #{$clientId}");
+    apiResponse(true, ['id' => $clientId], 'Client updated successfully');
+} else {
+    apiResponse(false, null, 'Failed to update client', API_SERVER_ERROR);
+}
+
+?>

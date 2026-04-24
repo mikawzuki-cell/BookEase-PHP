@@ -1,0 +1,148 @@
+<?php
+/**
+ * Authentication System
+ * Session management, login/logout
+ */
+
+session_start();
+
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/constants.php';
+require_once __DIR__ . '/../config/functions.php';
+
+class AuthManager {
+    private $conn;
+    
+    public function __construct($connection) {
+        $this->conn = $connection;
+    }
+    
+    /**
+     * Check if user is logged in
+     */
+    public function isLoggedIn() {
+        return isset($_SESSION['user_id']) && !$this->isSessionExpired();
+    }
+    
+    /**
+     * Check if session expired
+     */
+    private function isSessionExpired() {
+        if (!isset($_SESSION['last_activity'])) {
+            $_SESSION['last_activity'] = time();
+            return false;
+        }
+        
+        $inactive = time() - $_SESSION['last_activity'];
+        if ($inactive > SESSION_TIMEOUT) {
+            $this->logout();
+            return true;
+        }
+        
+        $_SESSION['last_activity'] = time();
+        return false;
+    }
+    
+    /**
+     * Get current user
+     */
+    public function getCurrentUser() {
+        if (!$this->isLoggedIn()) {
+            return null;
+        }
+        
+        $user = getUserById($_SESSION['user_id']);
+        if (!$user || !$user['enabled']) {
+            $this->logout();
+            return null;
+        }
+        
+        return $user;
+    }
+    
+    /**
+     * Login user
+     */
+    public function login($username, $password) {
+        if (empty($username) || empty($password)) {
+            return ['success' => false, 'message' => 'Username and password required'];
+        }
+        
+        $stmt = $this->conn->prepare("SELECT id, username, full_name, email, role, password_hash, enabled FROM users WHERE username = ?");
+        $stmt->bind_param("s", $username);
+        $stmt->execute();
+        $user = $stmt->get_result()->fetch_assoc();
+        
+        if (!$user) {
+            error_log("Login attempt failed: User not found - $username");
+            return ['success' => false, 'message' => 'Invalid username or password'];
+        }
+        
+        if (!$user['enabled']) {
+            error_log("Login attempt: Account disabled - $username");
+            return ['success' => false, 'message' => 'This account has been disabled'];
+        }
+        
+        if (!verifyPassword($password, $user['password_hash'])) {
+            error_log("Login attempt failed: Wrong password - $username");
+            return ['success' => false, 'message' => 'Invalid username or password'];
+        }
+        
+        // Update last login
+        $now = date('Y-m-d H:i:s');
+        $stmt = $this->conn->prepare("UPDATE users SET last_login = ? WHERE id = ?");
+        $stmt->bind_param("ss", $now, $user['id']);
+        $stmt->execute();
+        
+        // Set session
+        $_SESSION['user_id'] = $user['id'];
+        $_SESSION['username'] = $user['username'];
+        $_SESSION['full_name'] = $user['full_name'];
+        $_SESSION['role'] = $user['role'];
+        $_SESSION['last_activity'] = time();
+        
+        // Log action
+        logAuditAction($user['id'], 'LOGIN', 'Auth', 'User logged in');
+        
+        return ['success' => true, 'message' => 'Login successful', 'user' => $user];
+    }
+    
+    /**
+     * Logout user
+     */
+    public function logout() {
+        $userId = $_SESSION['user_id'] ?? null;
+        
+        if ($userId) {
+            logAuditAction($userId, 'LOGOUT', 'Auth', 'User logged out');
+        }
+        
+        session_destroy();
+        header('Location: /index.html');
+        exit;
+    }
+    
+    /**
+     * Check permission
+     */
+    public function checkPermission($module) {
+        $user = $this->getCurrentUser();
+        if (!$user) {
+            return false;
+        }
+        return hasPermission($user['role'], $module);
+    }
+}
+
+// Initialize auth manager
+$auth = new AuthManager($conn);
+
+// Require login for protected pages (unless explicitly allowed)
+if (!isset($ALLOW_NO_AUTH) || !$ALLOW_NO_AUTH) {
+    if (!$auth->isLoggedIn()) {
+        header('Location: /index.html');
+        exit;
+    }
+}
+
+?>

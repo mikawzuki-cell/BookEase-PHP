@@ -1,0 +1,65 @@
+<?php
+/**
+ * Audit Logging System
+ */
+
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/functions.php';
+
+/**
+ * Log audit action
+ */
+function logAuditAction($userId, $action, $module, $description = '', $oldValues = null, $newValues = null) {
+    global $conn;
+    
+    $ip = getUserIp();
+    $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+    
+    $oldJson = $oldValues ? json_encode($oldValues) : null;
+    $newJson = $newValues ? json_encode($newValues) : null;
+    
+    $stmt = $conn->prepare("
+        INSERT INTO audit_logs (user_id, action, module, description, old_values, new_values, ip_address, user_agent)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ");
+    
+    $stmt->bind_param(
+        "ssssssss",
+        $userId, $action, $module, $description, $oldJson, $newJson, $ip, $userAgent
+    );
+    
+    return $stmt->execute();
+}
+
+/**
+ * Get audit logs with pagination
+ */
+function getAuditLogs($limit = 50, $offset = 0, $module = null) {
+    global $conn;
+    
+    $query = "SELECT al.id, al.user_id, u.full_name, al.action, al.module, al.description, al.created_at FROM audit_logs al
+              JOIN users u ON al.user_id = u.id";
+    
+    $params = [];
+    $types = "";
+    
+    if ($module) {
+        $query .= " WHERE al.module = ?";
+        $params[] = $module;
+        $types .= "s";
+    }
+    
+    $query .= " ORDER BY al.created_at DESC LIMIT ? OFFSET ?";
+    $params[] = $limit;
+    $params[] = $offset;
+    $types .= "ii";
+    
+    $stmt = $conn->prepare($query);
+    if (!empty($params)) {
+        $stmt->bind_param($types, ...$params);
+    }
+    $stmt->execute();
+    return $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+}
+
+?>

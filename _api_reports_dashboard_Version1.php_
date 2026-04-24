@@ -1,0 +1,94 @@
+<?php
+/**
+ * GET /api/reports/dashboard.php
+ */
+
+$ALLOW_NO_AUTH = false;
+require_once __DIR__ . '/../../includes/auth.php';
+
+header('Content-Type: application/json');
+
+$user = $auth->getCurrentUser();
+if (!$user) {
+    apiResponse(false, null, 'Unauthorized', API_UNAUTHORIZED);
+}
+
+if (!$auth->checkPermission('dashboard')) {
+    apiResponse(false, null, 'Permission denied', API_FORBIDDEN);
+}
+
+$today = getTodayDate();
+
+// Get today's appointments
+$query = "
+    SELECT a.*, c.name as client_name, c.phone as client_phone, c.email as client_email,
+           s.name as service_name, s.duration, s.price,
+           st.name as staff_name, st.specialization, st.color as staff_color
+    FROM appointments a
+    JOIN clients c ON a.client_id = c.id
+    JOIN services s ON a.service_id = s.id
+    JOIN staff st ON a.staff_id = st.id
+    WHERE a.date = ?
+";
+
+// Role-based filtering
+$params = [$today];
+$types = "s";
+
+if ($user['role'] === 'staff' && $user['staff_id']) {
+    $query .= " AND a.staff_id = ?";
+    $params[] = $user['staff_id'];
+    $types .= "s";
+}
+
+$query .= " ORDER BY a.time ASC";
+
+$stmt = $conn->prepare($query);
+$stmt->bind_param($types, ...$params);
+$stmt->execute();
+$todayAppts = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+// Get stats
+$stmt = $conn->prepare("SELECT COUNT(*) as total FROM clients");
+$stmt->execute();
+$totalClients = $stmt->get_result()->fetch_assoc()['total'];
+
+$stmt = $conn->prepare("SELECT COUNT(*) as total FROM services");
+$stmt->execute();
+$totalServices = $stmt->get_result()->fetch_assoc()['total'];
+
+$stmt = $conn->prepare("SELECT COUNT(*) as total FROM staff");
+$stmt->execute();
+$totalStaff = $stmt->get_result()->fetch_assoc()['total'];
+
+// Calculate revenue
+$stmt = $conn->prepare("
+    SELECT SUM(s.price) as total FROM appointments a
+    JOIN services s ON a.service_id = s.id
+    WHERE a.status = 'completed'
+");
+$stmt->execute();
+$totalRevenue = $stmt->get_result()->fetch_assoc()['total'] ?? 0;
+
+// Status counts
+$statusCounts = array_reduce($todayAppts, function($acc, $appt) {
+    $status = $appt['status'];
+    $acc[$status] = ($acc[$status] ?? 0) + 1;
+    return $acc;
+}, []);
+
+$upcomingCount = array_sum(array_map(fn($s) => $statusCounts[$s] ?? 0, ['scheduled', 'confirmed']));
+$completedCount = $statusCounts['completed'] ?? 0;
+
+apiResponse(true, [
+    'todayAppts' => $todayAppts,
+    'totalClients' => $totalClients,
+    'totalServices' => $totalServices,
+    'totalStaff' => $totalStaff,
+    'totalRevenue' => (float)$totalRevenue,
+    'statusCounts' => $statusCounts,
+    'upcomingCount' => $upcomingCount,
+    'completedCount' => $completedCount
+], 'Dashboard data retrieved');
+
+?>

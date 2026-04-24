@@ -1,0 +1,169 @@
+<?php
+/**
+ * Helper Functions
+ */
+
+require_once 'database.php';
+require_once 'constants.php';
+
+/**
+ * Generate unique ID
+ */
+function generateId($prefix = 'id') {
+    return $prefix . '_' . bin2hex(random_bytes(5));
+}
+
+/**
+ * Hash password using bcrypt
+ */
+function hashPassword($password) {
+    return password_hash($password, PASSWORD_BCRYPT, ['cost' => 10]);
+}
+
+/**
+ * Verify password
+ */
+function verifyPassword($password, $hash) {
+    return password_verify($password, $hash);
+}
+
+/**
+ * Sanitize input
+ */
+function sanitize($data) {
+    global $conn;
+    if (is_array($data)) {
+        return array_map('sanitize', $data);
+    }
+    return $conn->real_escape_string(trim($data));
+}
+
+/**
+ * Validate email
+ */
+function validateEmail($email) {
+    return filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
+}
+
+/**
+ * Validate phone
+ */
+function validatePhone($phone) {
+    return preg_match('/^\d[\d\s\-().+]{6,}$/', trim($phone));
+}
+
+/**
+ * Get user by ID
+ */
+function getUserById($id) {
+    global $conn;
+    $stmt = $conn->prepare("SELECT * FROM users WHERE id = ?");
+    $stmt->bind_param("s", $id);
+    $stmt->execute();
+    return $stmt->get_result()->fetch_assoc();
+}
+
+/**
+ * Get staff member by ID
+ */
+function getStaffById($id) {
+    global $conn;
+    $stmt = $conn->prepare("SELECT * FROM staff WHERE id = ?");
+    $stmt->bind_param("s", $id);
+    $stmt->execute();
+    return $stmt->get_result()->fetch_assoc();
+}
+
+/**
+ * Get service by ID
+ */
+function getServiceById($id) {
+    global $conn;
+    $stmt = $conn->prepare("SELECT * FROM services WHERE id = ?");
+    $stmt->bind_param("s", $id);
+    $stmt->execute();
+    return $stmt->get_result()->fetch_assoc();
+}
+
+/**
+ * Check permission for module
+ */
+function hasPermission($role, $module) {
+    $permissions = ROLE_PERMISSIONS[$role] ?? [];
+    return in_array($module, $permissions);
+}
+
+/**
+ * Add time to a time string (returns HH:MM)
+ */
+function addMinutesToTime($time, $minutes) {
+    $parts = explode(':', $time);
+    $hours = (int)$parts[0];
+    $mins = (int)$parts[1];
+    $total = $hours * 60 + $mins + $minutes;
+    $newHours = floor($total / 60) % 24;
+    $newMins = $total % 60;
+    return sprintf('%02d:%02d', $newHours, $newMins);
+}
+
+/**
+ * Format time to 12-hour format
+ */
+function formatTime12($time) {
+    $parts = explode(':', $time);
+    $hours = (int)$parts[0];
+    $mins = (int)$parts[1];
+    $ampm = $hours >= 12 ? 'PM' : 'AM';
+    $display_hours = $hours % 12 ?: 12;
+    return sprintf('%d:%02d %s', $display_hours, $mins, $ampm);
+}
+
+/**
+ * Get current date
+ */
+function getTodayDate() {
+    return date('Y-m-d');
+}
+
+/**
+ * API Response helper
+ */
+function apiResponse($success = true, $data = null, $message = '', $code = 200) {
+    header('Content-Type: application/json');
+    http_response_code($code);
+    
+    $response = [
+        'success' => $success,
+        'message' => $message
+    ];
+    
+    if ($data !== null) {
+        $response['data'] = $data;
+    }
+    
+    echo json_encode($response);
+    exit;
+}
+
+/**
+ * Check if request is AJAX
+ */
+function isAjax() {
+    return isset($_SERVER['HTTP_X_REQUESTED_WITH']) && 
+           $_SERVER['HTTP_X_REQUESTED_WITH'] === 'XMLHttpRequest';
+}
+
+/**
+ * Get user IP address
+ */
+function getUserIp() {
+    if (!empty($_SERVER['HTTP_CLIENT_IP'])) {
+        return $_SERVER['HTTP_CLIENT_IP'];
+    } elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+        return explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'])[0];
+    } else {
+        return $_SERVER['REMOTE_ADDR'];
+    }
+}
+
+?>

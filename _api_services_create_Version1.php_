@@ -1,0 +1,62 @@
+<?php
+/**
+ * POST /api/services/create.php
+ */
+
+$ALLOW_NO_AUTH = false;
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/audit.php';
+
+header('Content-Type: application/json');
+
+$user = $auth->getCurrentUser();
+if (!$user) {
+    apiResponse(false, null, 'Unauthorized', API_UNAUTHORIZED);
+}
+
+if (!$auth->checkPermission('services')) {
+    apiResponse(false, null, 'Permission denied', API_FORBIDDEN);
+}
+
+$data = json_decode(file_get_contents('php://input'), true);
+
+$errors = [];
+if (empty($data['name'])) $errors['name'] = 'Service name is required';
+if (empty($data['duration']) || $data['duration'] <= 0) $errors['duration'] = 'Duration must be greater than 0';
+if ($data['price'] < 0) $errors['price'] = 'Price cannot be negative';
+
+// Check for duplicate
+$stmt = $conn->prepare("SELECT id FROM services WHERE LOWER(name) = LOWER(?)");
+$name = sanitize($data['name']);
+$stmt->bind_param("s", $name);
+$stmt->execute();
+if ($stmt->get_result()->num_rows > 0) {
+    $errors['name'] = 'A service with this name already exists';
+}
+
+if (!empty($errors)) {
+    apiResponse(false, ['errors' => $errors], 'Validation failed', API_BAD_REQUEST);
+}
+
+$serviceId = generateId('svc');
+$name = sanitize($data['name']);
+$duration = (int)$data['duration'];
+$price = (float)$data['price'];
+$description = sanitize($data['description'] ?? '');
+$category = sanitize($data['category'] ?? 'General');
+
+$stmt = $conn->prepare("
+    INSERT INTO services (id, name, duration, price, description, category)
+    VALUES (?, ?, ?, ?, ?, ?)
+");
+
+$stmt->bind_param("isidss", $serviceId, $duration, $price, $description, $category);
+
+if ($stmt->execute()) {
+    logAuditAction($user['id'], 'CREATE', 'Services', "Created service: $name");
+    apiResponse(true, ['id' => $serviceId], 'Service created successfully', API_CREATED);
+} else {
+    apiResponse(false, null, 'Failed to create service', API_SERVER_ERROR);
+}
+
+?>

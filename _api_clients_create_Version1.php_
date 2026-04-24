@@ -1,0 +1,59 @@
+<?php
+/**
+ * POST /api/clients/create.php
+ */
+
+$ALLOW_NO_AUTH = false;
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/audit.php';
+
+header('Content-Type: application/json');
+
+$user = $auth->getCurrentUser();
+if (!$user) {
+    apiResponse(false, null, 'Unauthorized', API_UNAUTHORIZED);
+}
+
+if (!$auth->checkPermission('clients')) {
+    apiResponse(false, null, 'Permission denied', API_FORBIDDEN);
+}
+
+$data = json_decode(file_get_contents('php://input'), true);
+
+// Validate
+$errors = [];
+if (empty($data['name'])) $errors['name'] = 'Name is required';
+if (empty($data['phone'])) $errors['phone'] = 'Phone is required';
+elseif (!validatePhone($data['phone'])) $errors['phone'] = 'Invalid phone format';
+
+if (!empty($data['email']) && !validateEmail($data['email'])) {
+    $errors['email'] = 'Invalid email format';
+}
+
+if (!empty($errors)) {
+    apiResponse(false, ['errors' => $errors], 'Validation failed', API_BAD_REQUEST);
+}
+
+$name = sanitize($data['name']);
+$phone = sanitize($data['phone']);
+$email = sanitize($data['email'] ?? '');
+$address = sanitize($data['address'] ?? '');
+$notes = sanitize($data['notes'] ?? '');
+$clientId = generateId('cli');
+$today = getTodayDate();
+
+$stmt = $conn->prepare("
+    INSERT INTO clients (id, name, phone, email, address, notes, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+");
+
+$stmt->bind_param("sssssss", $clientId, $name, $phone, $email, $address, $notes, $today);
+
+if ($stmt->execute()) {
+    logAuditAction($user['id'], 'CREATE', 'Clients', "Created client #{$clientId}: $name");
+    apiResponse(true, ['id' => $clientId], 'Client created successfully', API_CREATED);
+} else {
+    apiResponse(false, null, 'Failed to create client', API_SERVER_ERROR);
+}
+
+?>

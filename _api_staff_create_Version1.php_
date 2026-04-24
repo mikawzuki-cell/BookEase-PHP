@@ -1,0 +1,55 @@
+<?php
+/**
+ * POST /api/staff/create.php
+ */
+
+$ALLOW_NO_AUTH = false;
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/audit.php';
+
+header('Content-Type: application/json');
+
+$user = $auth->getCurrentUser();
+if (!$user) {
+    apiResponse(false, null, 'Unauthorized', API_UNAUTHORIZED);
+}
+
+if (!$auth->checkPermission('staff')) {
+    apiResponse(false, null, 'Permission denied', API_FORBIDDEN);
+}
+
+$data = json_decode(file_get_contents('php://input'), true);
+
+$errors = [];
+if (empty($data['name'])) $errors['name'] = 'Name is required';
+if (empty($data['specialization'])) $errors['specialization'] = 'Specialization is required';
+if (isset($data['email']) && !empty($data['email']) && !validateEmail($data['email'])) {
+    $errors['email'] = 'Invalid email format';
+}
+
+if (!empty($errors)) {
+    apiResponse(false, ['errors' => $errors], 'Validation failed', API_BAD_REQUEST);
+}
+
+$staffId = generateId('stf');
+$name = sanitize($data['name']);
+$specialization = sanitize($data['specialization']);
+$phone = sanitize($data['phone'] ?? '');
+$email = sanitize($data['email'] ?? '');
+$color = sanitize($data['color'] ?? '#6366f1');
+
+$stmt = $conn->prepare("
+    INSERT INTO staff (id, name, specialization, phone, email, color)
+    VALUES (?, ?, ?, ?, ?, ?)
+");
+
+$stmt->bind_param("ssssss", $staffId, $name, $specialization, $phone, $email, $color);
+
+if ($stmt->execute()) {
+    logAuditAction($user['id'], 'CREATE', 'Staff', "Created staff member: $name");
+    apiResponse(true, ['id' => $staffId], 'Staff member created successfully', API_CREATED);
+} else {
+    apiResponse(false, null, 'Failed to create staff member', API_SERVER_ERROR);
+}
+
+?>

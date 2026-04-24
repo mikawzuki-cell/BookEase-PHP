@@ -1,0 +1,133 @@
+/**
+ * API Client - Centralized API communication
+ */
+
+const API = {
+    baseUrl: '/api',
+    
+    async request(endpoint, method = 'GET', data = null) {
+        const options = {
+            method,
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        };
+        
+        if (data && (method === 'POST' || method === 'PUT')) {
+            options.body = JSON.stringify(data);
+        }
+        
+        try {
+            const response = await fetch(`${this.baseUrl}${endpoint}`, options);
+            const result = await response.json();
+            
+            // Handle unauthorized
+            if (response.status === 401) {
+                window.location.href = '/index.html';
+            }
+            
+            return result;
+        } catch (error) {
+            console.error('API Error:', error);
+            return { success: false, message: 'Network error' };
+        }
+    },
+    
+    // Auth endpoints
+    async login(username, password) {
+        return this.request('/auth/login.php', 'POST', { username, password });
+    },
+    
+    async logout() {
+        await this.request('/auth/logout.php', 'POST');
+        window.location.href = '/index.html';
+    },
+    
+    async checkSession() {
+        return this.request('/auth/check-session.php');
+    },
+    
+    // Appointments
+    async getAppointments(filters = {}) {
+        const params = new URLSearchParams(filters).toString();
+        return this.request(`/appointments/list.php?${params}`);
+    },
+    
+    async createAppointment(data) {
+        return this.request('/appointments/create.php', 'POST', data);
+    },
+    
+    async updateAppointment(data) {
+        return this.request('/appointments/update.php', 'PUT', data);
+    },
+    
+    async deleteAppointment(id) {
+        return this.request('/appointments/delete.php', 'POST', { id });
+    },
+    
+    // Clients
+    async getClients(filters = {}) {
+        const params = new URLSearchParams(filters).toString();
+        return this.request(`/clients/list.php?${params}`);
+    },
+    
+    async createClient(data) {
+        return this.request('/clients/create.php', 'POST', data);
+    },
+    
+    async updateClient(data) {
+        return this.request('/clients/update.php', 'PUT', data);
+    },
+    
+    async deleteClient(id) {
+        return this.request('/clients/delete.php', 'POST', { id });
+    },
+    
+    // Services
+    async getServices(filters = {}) {
+        const params = new URLSearchParams(filters).toString();
+        return this.request(`/services/list.php?${params}`);
+    },
+    
+    async createService(data) {
+        return this.request('/services/create.php', 'POST', data);
+    },
+    
+    async updateService(data) {
+        return this.request('/services/update.php', 'PUT', data);
+    },
+    
+    async deleteService(id) {
+        return this.request('/services/delete.php', 'POST', { id });
+    },
+    
+    // Staff
+    async getStaff(filters = {}) {
+        const params = new URLSearchParams(filters).toString();
+        return this.request(`/staff/list.php?${params}`);
+    },
+    
+    async createStaff(data) {
+        return this.request('/staff/create.php', 'POST', data);
+    },
+    
+    async updateStaff(data) {
+        return this.request('/staff/update.php', 'PUT', data);
+    },
+    
+    async deleteStaff(id) {
+        return this.request('/staff/delete.php', 'POST', { id });
+    },
+    
+    // Dashboard data
+    async getDashboardData() {
+        return this.request('/reports/dashboard.php');
+    },
+    
+    // Audit logs
+    async getAuditLogs(module = null, page = 1) {
+        const params = new URLSearchParams({ module, page }).toString();
+        return this.request(`/audit/logs.php?${params}`);
+    }
+};

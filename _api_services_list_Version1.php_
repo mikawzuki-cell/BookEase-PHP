@@ -1,0 +1,74 @@
+<?php
+/**
+ * GET /api/services/list.php
+ */
+
+$ALLOW_NO_AUTH = false;
+require_once __DIR__ . '/../../includes/auth.php';
+
+header('Content-Type: application/json');
+
+$user = $auth->getCurrentUser();
+if (!$user) {
+    apiResponse(false, null, 'Unauthorized', API_UNAUTHORIZED);
+}
+
+if (!$auth->checkPermission('services')) {
+    apiResponse(false, null, 'Permission denied', API_FORBIDDEN);
+}
+
+$search = sanitize($_GET['search'] ?? '');
+$filterCat = sanitize($_GET['filterCat'] ?? '');
+$page = (int)($_GET['page'] ?? 1);
+
+$query = "SELECT * FROM services WHERE 1=1";
+$params = [];
+$types = "";
+
+if ($search) {
+    $search_pattern = "%$search%";
+    $query .= " AND (name LIKE ? OR category LIKE ? OR description LIKE ?)";
+    $params = [$search_pattern, $search_pattern, $search_pattern];
+    $types = "sss";
+}
+
+if ($filterCat && $filterCat !== 'All') {
+    $query .= " AND category = ?";
+    $params[] = $filterCat;
+    $types .= "s";
+}
+
+$query .= " ORDER BY name ASC";
+
+// Count total
+$countQuery = str_replace("SELECT *", "SELECT COUNT(*) as total", $query);
+$stmt = $conn->prepare($countQuery);
+if (!empty($params)) {
+    $stmt->bind_param($types, ...$params);
+}
+$stmt->execute();
+$total = $stmt->get_result()->fetch_assoc()['total'];
+
+// Paginate
+$limit = ITEMS_PER_PAGE;
+$offset = ($page - 1) * $limit;
+$query .= " LIMIT ? OFFSET ?";
+$params[] = $limit;
+$params[] = $offset;
+$types .= "ii";
+
+$stmt = $conn->prepare($query);
+if (!empty($params)) {
+    $stmt->bind_param($types, ...$params);
+}
+$stmt->execute();
+$services = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+apiResponse(true, [
+    'services' => $services,
+    'total' => $total,
+    'page' => $page,
+    'totalPages' => ceil($total / $limit)
+], 'Services retrieved');
+
+?>

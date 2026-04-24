@@ -1,0 +1,19 @@
+<?php
+/**
+ * GET /api/auth/check-session.php
+ */
+
+$ALLOW_NO_AUTH = false;
+require_once __DIR__ . '/../../includes/auth.php';
+
+header('Content-Type: application/json');
+
+$user = $auth->getCurrentUser();
+
+if ($user) {
+    apiResponse(true, $user, 'Session valid');
+} else {
+    apiResponse(false, null, 'No valid session', API_UNAUTHORIZED);
+}
+
+?>

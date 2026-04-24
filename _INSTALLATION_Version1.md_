@@ -1,0 +1,13 @@
+# BookEase PHP/MySQL Setup Guide
+
+## Prerequisites
+- PHP 7.4+ with mysqli extension
+- MySQL 5.7+
+- Apache/Nginx with rewrite support
+- Composer (optional)
+
+## Installation Steps
+
+### 1. Database Setup
+```bash
+mysql -u root -p < schema.sql

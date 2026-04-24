@@ -1,0 +1,101 @@
+/**
+ * Utility Functions
+ */
+
+const Utils = {
+    generateId(prefix = 'id') {
+        return prefix + '_' + Math.random().toString(36).substring(2, 10);
+    },
+    
+    formatTime12(time) {
+        const [hours, minutes] = time.split(':').map(Number);
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        const displayHours = hours % 12 || 12;
+        return `${displayHours}:${String(minutes).padStart(2, '0')} ${ampm}`;
+    },
+    
+    formatDate(date) {
+        return new Date(date).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+        });
+    },
+    
+    validateEmail(email) {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    },
+    
+    validatePhone(phone) {
+        return /^\d[\d\s\-().+]{6,}$/.test(phone.trim());
+    },
+    
+    debounce(fn, delay) {
+        let timeoutId;
+        return function (...args) {
+            clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => fn(...args), delay);
+        };
+    }
+};
+
+const UI = {
+    formatTime12: Utils.formatTime12,
+    
+    formatStatus(status) {
+        return status.charAt(0).toUpperCase() + status.slice(1).replace('-', ' ');
+    },
+    
+    getStatusColor(status) {
+        const colors = {
+            'scheduled': '#3b82f6',
+            'confirmed': '#4f46e5',
+            'in-progress': '#f59e0b',
+            'completed': '#10b981',
+            'cancelled': '#ef4444',
+            'no-show': '#6b7280'
+        };
+        return colors[status] || '#9ca3af';
+    },
+    
+    showNotification(message, type = 'success') {
+        const notif = document.createElement('div');
+        notif.className = `notification notification-${type}`;
+        notif.textContent = message;
+        document.body.appendChild(notif);
+        
+        setTimeout(() => notif.remove(), 3000);
+    },
+    
+    showModal(title, content, onConfirm) {
+        // Create modal overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-header">
+                <h2>${title}</h2>
+                <button class="modal-close">✕</button>
+            </div>
+            <div class="modal-content">
+                ${content}
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel">Cancel</button>
+                <button class="btn-confirm">Confirm</button>
+            </div>
+        `;
+        
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+        
+        modal.querySelector('.modal-close').addEventListener('click', () => overlay.remove());
+        modal.querySelector('.btn-cancel').addEventListener('click', () => overlay.remove());
+        modal.querySelector('.btn-confirm').addEventListener('click', () => {
+            if (onConfirm) onConfirm();
+            overlay.remove();
+        });
+    }
+};
